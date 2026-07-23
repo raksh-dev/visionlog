@@ -1,0 +1,54 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-upload-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/upload-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+
+  test-inference-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/inference-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pytest
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install flake8
+      - run: flake8 services --max-line-length=100 --extend-ignore=E203,W503
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t upload-service:ci services/upload-service

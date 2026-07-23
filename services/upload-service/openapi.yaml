@@ -1,0 +1,67 @@
+# OpenAPI 2.0 (Swagger) spec for GCP API Gateway.
+# Routes requests to the Cloud Run Upload Service and enforces an API key
+# on every endpoint except /health. Replace BACKEND_URL before deploying.
+swagger: "2.0"
+info:
+  title: visionlog-gateway
+  description: VisionLog public API gateway
+  version: "1.0.0"
+schemes:
+  - https
+produces:
+  - application/json
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: X-API-Key
+    in: header
+paths:
+  /v1/images/upload:
+    post:
+      summary: Upload an image
+      operationId: uploadImage
+      security:
+        - api_key: []
+      x-google-backend:
+        address: BACKEND_URL
+      consumes:
+        - multipart/form-data
+      responses:
+        "202":
+          description: Accepted
+  /v1/images/{requestId}/status:
+    get:
+      summary: Get status
+      operationId: getStatus
+      security:
+        - api_key: []
+      x-google-backend:
+        address: BACKEND_URL
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          type: string
+      responses:
+        "200":
+          description: OK
+  /v1/images:
+    get:
+      summary: List predictions
+      operationId: listImages
+      security:
+        - api_key: []
+      x-google-backend:
+        address: BACKEND_URL
+      responses:
+        "200":
+          description: OK
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      x-google-backend:
+        address: BACKEND_URL
+      responses:
+        "200":
+          description: OK

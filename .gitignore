@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+node_modules/
+dist/
+saved_model/
+local-uploads/
+.terraform/
+*.tfstate*
+.coverage
+htmlcov/
+tests/fixtures_labels.json
+PROJECT_OVERVIEW.md
+GAPS.md

@@ -1,0 +1,81 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation
+
+env:
+  PROJECT_ID: visionlog-prod
+  REGION: us-central1
+
+jobs:
+  deploy-upload-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build & push
+        run: |
+          REG=${REGION}-docker.pkg.dev/${PROJECT_ID}/visionlog
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          docker build -t $REG/upload-service:${{ github.sha }} services/upload-service
+          docker push $REG/upload-service:${{ github.sha }}
+      - name: Deploy to Cloud Run
+        run: |
+          REG=${REGION}-docker.pkg.dev/${PROJECT_ID}/visionlog
+          gcloud run deploy upload-service \
+            --image=$REG/upload-service:${{ github.sha }} \
+            --region=${REGION} --min-instances=1 --max-instances=10 \
+            --memory=512Mi --concurrency=80 --timeout=30s \
+            --service-account=visionlog-sa@${PROJECT_ID}.iam.gserviceaccount.com \
+            --set-env-vars=ENVIRONMENT=production,GCP_PROJECT_ID=${PROJECT_ID}
+
+  deploy-inference-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy Cloud Run Function
+        run: |
+          gcloud functions deploy inference-worker \
+            --gen2 --runtime=python311 --region=${REGION} \
+            --source=services/inference-worker --entry-point=handle_event \
+            --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
+            --trigger-event-filters="bucket=visionlog-images-${PROJECT_ID}" \
+            --memory=1Gi --timeout=120s --max-instances=5 \
+            --service-account=visionlog-sa@${PROJECT_ID}.iam.gserviceaccount.com
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install && npm run build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SA }}
+          channelId: live
+          projectId: visionlog-prod
